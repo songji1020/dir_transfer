@@ -26,31 +26,22 @@ class fileServer(file_pb2_grpc.WiriteFileServicer):
         ''' root_path 是目标目录 '''
         self.root_path = root_path
 
-    def write_file(self, file_name, context):
-        print("准备存文件:", file_name)
-        self.check_path(file_name)
-        string = str(context, encoding="utf-8")
-        # lines = json.loads(string)
-        lines = ast.literal_eval(string)     # 字符串格式的list 转成list
-        with open('xxxxx.txt', "wb") as w_file:
-            for line in lines:
-                w_file.write(line)
+    def write_file(self, folder, file_name, context):
+        ''' context 是bytes格式 '''
+        print("准备存文件:", folder + file_name)
+        path = self.check_path(file_name, folder)
+        with open(path, "wb") as w_file:
+            w_file.write(context)
 
-    def check_path(self, path:str, root_path):
-        ''' 检查路径是否存在 '''
-        dir_list = path.split('\\')
-        print(dir_list)
-        if path[0] == '\\':
-            dir_list.pop(0)
-        dir_list.pop()
-        print(dir_list)
+    def check_path(self, filename:str, folder):
+        ''' 检查路径是否存在 不存在则创建'''
+        path = folder + filename
+        folder_t = os.path.dirname(path)
+        if not os.path.exists(folder_t):
+            print("创建：", folder_t)
+            os.makedirs(folder_t, 0o777)
+        return path
 
-        if len(dir_list):
-            # 检查文件夹是否存在
-            pass
-        pass
-
-    # def dir_exist_or_create(self,):
 
     # #### 真正重要的-输出函数 #### #
     def SendFile(self, request, context):
@@ -58,17 +49,8 @@ class fileServer(file_pb2_grpc.WiriteFileServicer):
         file_name = request.file_name
         content = request.content
 
-        print("file_path:", file_path)
-        print("file_name:", file_name)
-        print("type of file_name:", type(file_name))
-        print("content:", content)
-
-        print("sys.path[0]=%s" % (sys.path[0]))
-
         current_path = sys.path[0] + '\\tmp'
-        print(current_path)
-        self.write_file(file_name, content)
-
+        self.write_file(current_path, file_name, content)
         result = sys.path[0]
         return file_pb2.FileResponse(ret_code='0', info='ok', content='成功接收：' + result)
 
@@ -76,9 +58,13 @@ _HOST = 'localhost'
 _PORT = '9090'
 _ONE_DAY_IN_SECONDS = 1
 _ROOT_PATH = '.'
+# MAX_MESSAGE_LENGTH = 30 * 1024 *1024
+MAX_MESSAGE_LENGTH = 1 * 1024 *1024
 
 def serve():
-    grpcServer = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    grpcServer = grpc.server(futures.ThreadPoolExecutor(max_workers=10), \
+                             options = [('grpc.max_send_message_length', MAX_MESSAGE_LENGTH), \
+                                        ('grpc.max_receive_message_length', MAX_MESSAGE_LENGTH)])
     file_pb2_grpc.add_WiriteFileServicer_to_server(fileServer(_ROOT_PATH), grpcServer)
     grpcServer.add_insecure_port(_HOST + ':' + _PORT)
     grpcServer.start()
@@ -87,6 +73,7 @@ def serve():
             time.sleep(_ONE_DAY_IN_SECONDS)
     except KeyboardInterrupt:
         grpcServer.stop(0)
+
 
 
 if __name__ == '__main__':
